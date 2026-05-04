@@ -24,31 +24,28 @@
     const HOME_PAGE = './index.html';
 
     async function callGasApi(action, params = []) {
-      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'https://script.google.com/macros/s/AKfycby_-gE8430wOvKXPjTtridaEQPo14xealdvQcAN1D7ZkhqJLGzrvxIUKmkFx5467sMg/exec') {
-        throw new Error('GAS_WEB_APP_URL belum diisi. Paste URL deployment Apps Script Web App terlebih dahulu.');
-      }
-
       const response = await fetch(GAS_WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, params })
       });
-
+    
       const text = await response.text();
       let payload;
+    
       try {
         payload = JSON.parse(text);
       } catch (err) {
         throw new Error('Response backend bukan JSON valid: ' + text.slice(0, 200));
       }
-
+    
       if (!response.ok) {
         throw new Error(payload.message || 'Request gagal dengan status ' + response.status);
       }
-
+    
       return payload;
     }
-
+    
     function PelamarDashboard() {
       // STATE UMUM
       const [idPelamar, setIdPelamar] = useState('');
