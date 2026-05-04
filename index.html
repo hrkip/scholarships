@@ -311,6 +311,32 @@
         return true;
       };
 
+      const normalizeIndonesianWa = (value) => {
+        if (!value) return '';
+      
+        let number = String(value).trim();
+      
+        // Remove spaces, dashes, brackets, plus signs, and other non-digits
+        number = number.replace(/\D/g, '');
+      
+        // 08xxxxxxxxxx -> 628xxxxxxxxxx
+        if (number.startsWith('0')) {
+          number = '62' + number.slice(1);
+        }
+      
+        // 8xxxxxxxxxx -> 628xxxxxxxxxx
+        if (number.startsWith('8')) {
+          number = '62' + number;
+        }
+      
+        // 6208xxxxxxxxxx -> 628xxxxxxxxxx
+        if (number.startsWith('6208')) {
+          number = '62' + number.slice(3);
+        }
+      
+        return number;
+      };
+
       const handleSubmit = async (e) => {
         e.preventDefault();
 
