@@ -3,46 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal Kandidat</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap');
     body { font-family: 'Inter', sans-serif; background-color: #fcfcfc; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body class="text-gray-900 antialiased">
   <div id="root"></div>
-  
+
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
+    const GAS_WEB_APP_URL = 'PASTE_YOUR_GAS_WEB_APP_URL_HERE';
+    const HOME_PAGE = './index.html';
 
-    // ==========================================
-    // GITHUB PAGES -> GOOGLE APPS SCRIPT API
-    // ==========================================
-    const GAS_API_URL = "PASTE_YOUR_GAS_WEB_APP_EXEC_URL_HERE";
-    const INDEX_PAGE_URL = "index.html";
-
-    async function callApi(action, ...args) {
-      try {
-        const response = await fetch(GAS_API_URL, {
-          method: "POST",
-          redirect: "follow",
-          body: JSON.stringify({ action, args })
-        });
-        const text = await response.text();
-        try {
-          return JSON.parse(text);
-        } catch (parseError) {
-          return { success: false, message: "Respon server tidak valid: " + text.slice(0, 200) };
-        }
-      } catch (error) {
-        return { success: false, message: "Koneksi API gagal: " + error.message };
+    async function callGasApi(action, params = []) {
+      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'https://script.google.com/macros/s/AKfycby_-gE8430wOvKXPjTtridaEQPo14xealdvQcAN1D7ZkhqJLGzrvxIUKmkFx5467sMg/exec') {
+        throw new Error('GAS_WEB_APP_URL belum diisi. Paste URL deployment Apps Script Web App terlebih dahulu.');
       }
-    }
 
+      const response = await fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action, params })
+      });
+
+      const text = await response.text();
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (err) {
+        throw new Error('Response backend bukan JSON valid: ' + text.slice(0, 200));
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Request gagal dengan status ' + response.status);
+      }
+
+      return payload;
+    }
 
     function PelamarDashboard() {
       // STATE UMUM
@@ -50,14 +55,15 @@
       const [applicantStatus, setApplicantStatus] = useState('');
       const [isLoading, setIsLoading] = useState(true);
       const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null });
-      const [view, setView] = useState('dashboard'); // 'dashboard', 'kognitif_test', 'onboarding_contract'
+      const [view, setView] = useState('dashboard'); // 'dashboard', 'kognitif_test', 'onboarding_contract', 'onboarding_success'
 
       // STATE KOGNITIF
       const [isTakingTest, setIsTakingTest] = useState(false);
-      const [timeLeft, setTimeLeft] = useState(1800); 
+      const [timeLeft, setTimeLeft] = useState(1800);
       const [questions, setQuestions] = useState([]);
       const [answers, setAnswers] = useState({});
       const [isFinished, setIsFinished] = useState(false);
+      const submitLockRef = useRef(false);
 
       // STATE ONBOARDING
       const [clauses, setClauses] = useState([]);
@@ -67,77 +73,107 @@
       useEffect(() => {
         const savedId = localStorage.getItem('id_pelamar_aktif');
         if (!savedId) {
-          alert('Sesi tidak valid. Silakan login kembali.');
-          // Redirect ke halaman depan jika perlu
-        } else {
-          setIdPelamar(savedId);
-          fetchInitialData(savedId);
+          setIsLoading(false);
+          setDialog({
+            isOpen: true,
+            type: 'alert',
+            title: 'Sesi Tidak Valid',
+            message: 'Silakan login kembali sebagai pelamar.',
+            onConfirm: () => { window.location.href = HOME_PAGE; }
+          });
+          return;
         }
+
+        setIdPelamar(savedId);
+        fetchInitialData(savedId);
       }, []);
 
       // MENGAMBIL STATUS PELAMAR DULU
-      const fetchInitialData = (id) => {
+      const fetchInitialData = async (id) => {
         setIsLoading(true);
-        callApi('verifyPelamarLogin', id).then((res) => {
+        try {
+          const res = await callGasApi('verifyPelamarLogin', [id]);
           if (res.success) {
-            setApplicantStatus(res.status);
+            setApplicantStatus(res.status || '');
+
             if (res.status === 'Penilaian Cognitive') {
-              fetchQuestions();
+              await fetchQuestions();
             } else if (res.status === 'Onboarding') {
-              fetchOnboardingClauses();
-            } else {
-              setIsLoading(false);
+              await fetchOnboardingClauses();
             }
           } else {
-            setIsLoading(false);
-            alert(res.message);
+            setDialog({
+              isOpen: true,
+              type: 'alert',
+              title: 'Login Tidak Valid',
+              message: res.message || 'ID Pelamar tidak valid.',
+              onConfirm: () => { window.location.href = HOME_PAGE; }
+            });
           }
-        });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: err.message });
+        } finally {
+          setIsLoading(false);
+        }
       };
 
       // FUNGSI FETCH KOGNITIF
-      const fetchQuestions = () => {
-        callApi('getKognitifQuestions').then((res) => {
-          if (res.success) setQuestions(res.data);
-          setIsLoading(false);
-        });
+      const fetchQuestions = async () => {
+        try {
+          const res = await callGasApi('getKognitifQuestions');
+          if (res.success) setQuestions(Array.isArray(res.data) ? res.data : []);
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal Memuat Soal', message: res.message || 'Soal tidak tersedia.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: err.message });
+        }
       };
 
       // FUNGSI FETCH ONBOARDING CLAUSES
-      const fetchOnboardingClauses = () => {
-        callApi('getOnboardingClauses').then((res) => {
-          if (res.success) setClauses(res.data);
-          setIsLoading(false);
-        });
+      const fetchOnboardingClauses = async () => {
+        try {
+          const res = await callGasApi('getOnboardingClauses');
+          if (res.success) setClauses(Array.isArray(res.data) ? res.data : []);
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal Memuat Kontrak', message: res.message || 'Template perjanjian tidak tersedia.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: err.message });
+        }
       };
 
       // LOGIKA KOGNITIF
       const handleAnswerChange = (questionId, answerValue) => {
-        setAnswers({ ...answers, [questionId]: answerValue });
+        setAnswers(prev => ({ ...prev, [questionId]: answerValue }));
       };
 
-      const executeSubmitTest = () => {
+      const executeSubmitTest = async () => {
+        if (submitLockRef.current) return;
+        submitLockRef.current = true;
         setIsLoading(true);
-        callApi('submitKognitif', idPelamar, answers).then((res) => {
-          setIsLoading(false);
-          if(res.success) {
-            setIsFinished(true); // Tandai selesai (buat nge-blur background)
-            
-            // Pop-up sukses yang tombolnya langsung ngarahin ke Dashboard
-            setDialog({ 
-              isOpen: true, 
-              type: 'success', 
-              title: 'Tes Selesai! 🎉', 
+
+        try {
+          const res = await callGasApi('submitKognitif', [idPelamar, answers]);
+          if (res.success) {
+            setIsFinished(true);
+            setIsTakingTest(false);
+            setApplicantStatus('Selesai Test Kognitif');
+            setDialog({
+              isOpen: true,
+              type: 'success',
+              title: 'Tes Selesai! 🎉',
               message: 'Jawaban Anda telah tersimpan. Silakan kembali ke dashboard untuk melihat status selanjutnya.',
               onConfirm: () => {
-                setIsTakingTest(false);
-                setView('dashboard'); // Redirect ke dashboard
+                setView('dashboard');
               }
             });
           } else {
-            setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message });
+            submitLockRef.current = false;
+            setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Jawaban gagal dikirim.' });
           }
-        });
+        } catch (err) {
+          submitLockRef.current = false;
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: err.message });
+        } finally {
+          setIsLoading(false);
+        }
       };
 
       useEffect(() => {
@@ -153,10 +189,19 @@
       }, [isTakingTest, timeLeft]);
 
       const startTest = () => {
+        if (questions.length === 0) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Soal Belum Tersedia', message: 'Soal kognitif belum tersedia. Silakan hubungi HR.' });
+          return;
+        }
+
         setDialog({
-          isOpen: true, type: 'confirm', title: 'Mulai Tes?',
+          isOpen: true,
+          type: 'confirm',
+          title: 'Mulai Tes?',
           message: 'Waktu 30 menit akan berjalan dan tidak dapat di-pause. Pastikan koneksi stabil. Mulai sekarang?',
           onConfirm: () => {
+            setAnswers({});
+            setTimeLeft(1800);
             setIsTakingTest(true);
             setView('kognitif_test');
           }
@@ -164,9 +209,17 @@
       };
 
       const handleSubmitTest = () => {
+        const answeredCount = Object.keys(answers).length;
+        const totalQuestions = questions.length;
+        const warning = answeredCount < totalQuestions
+          ? `\n\nCatatan: Anda baru menjawab ${answeredCount} dari ${totalQuestions} soal.`
+          : '';
+
         setDialog({
-          isOpen: true, type: 'confirm', title: 'Kumpulkan Jawaban?',
-          message: 'Anda yakin ingin mengumpulkan jawaban sekarang? Anda tidak dapat mengulang tes ini.',
+          isOpen: true,
+          type: 'confirm',
+          title: 'Kumpulkan Jawaban?',
+          message: 'Anda yakin ingin mengumpulkan jawaban sekarang? Anda tidak dapat mengulang tes ini.' + warning,
           onConfirm: () => executeSubmitTest()
         });
       };
@@ -189,33 +242,51 @@
         }
 
         setDialog({
-          isOpen: true, type: 'confirm', title: 'Konfirmasi Tanda Tangan',
+          isOpen: true,
+          type: 'confirm',
+          title: 'Konfirmasi Tanda Tangan',
           message: 'Dengan mengirimkan persetujuan ini, Anda mengikatkan diri pada kontrak kerja secara digital. Lanjutkan?',
-          onConfirm: () => {
+          onConfirm: async () => {
             setIsLoading(true);
-            callApi('submitOnboardingSignature', idPelamar, signName).then((res) => {
-              setIsLoading(false);
-              if(res.success) {
-                setDialog({ 
-                  isOpen: true, type: 'success', title: 'Selamat!', 
+            try {
+              const res = await callGasApi('submitOnboardingSignature', [idPelamar, signName.trim()]);
+              if (res.success) {
+                setApplicantStatus('Active');
+                setDialog({
+                  isOpen: true,
+                  type: 'success',
+                  title: 'Selamat!',
                   message: 'Persetujuan kontrak berhasil direkam. Anda sekarang resmi menjadi bagian dari perusahaan kami.',
-                  onConfirm: () => setView('onboarding_success') // 👇 Ubah agar diarahkan ke view Thank You
+                  onConfirm: () => setView('onboarding_success')
                 });
               } else {
-                setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message });
+                setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Persetujuan kontrak gagal dikirim.' });
               }
-            });
+            } catch (err) {
+              setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: err.message });
+            } finally {
+              setIsLoading(false);
+            }
           }
         });
       };
 
+      const handleLogout = () => {
+        localStorage.removeItem('id_pelamar_aktif');
+        window.location.href = HOME_PAGE;
+      };
 
       // RENDER LAYAR UTAMA
       return (
         <div className="max-w-4xl mx-auto py-10 px-6 relative">
           <header className="mb-10 text-center border-b pb-6">
+            <div className="flex justify-end mb-4">
+              <button onClick={handleLogout} className="px-4 py-2 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 text-xs font-bold rounded-lg border transition">
+                Keluar
+              </button>
+            </div>
             <h1 className="text-3xl font-extrabold text-black mb-2">Portal Kandidat</h1>
-            <p className="text-gray-500 font-medium">ID Pelamar Anda: <span className="font-bold text-red-600">{idPelamar}</span></p>
+            <p className="text-gray-500 font-medium">ID Pelamar Anda: <span className="font-bold text-red-600">{idPelamar || '-'}</span></p>
             {applicantStatus && <p className="text-sm mt-2 font-bold text-gray-700 bg-gray-100 inline-block px-3 py-1 rounded">Status: {applicantStatus}</p>}
           </header>
 
@@ -226,25 +297,26 @@
             <React.Fragment>
               {/* VIEW 1: DASHBOARD PEMILIHAN MENU */}
               {view === 'dashboard' && (
-                <div className="bg-white p-8 rounded-2xl shadow-sm border text-center">
+                <div className="bg-white p-8 rounded-2xl shadow-sm border text-center animate-[fadeIn_0.3s_ease-out]">
                   <h2 className="text-2xl font-bold mb-4 text-gray-800">Dashboard Anda</h2>
+                  <p className="text-sm text-gray-500 max-w-xl mx-auto">Akses modul seleksi yang tersedia sesuai status rekrutmen Anda saat ini.</p>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-                    
-                    {/* TOMBOL UJIAN KOGNITIF (UPDATE PESAN TUNGGU HASIL) */}
-                    <button 
-                      onClick={startTest} 
+                    {/* TOMBOL UJIAN KOGNITIF */}
+                    <button
+                      onClick={startTest}
                       disabled={applicantStatus !== 'Penilaian Cognitive' || isFinished}
                       className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-3 transition ${applicantStatus === 'Penilaian Cognitive' && !isFinished ? 'border-red-600 bg-red-50 hover:bg-red-100 cursor-pointer shadow-md transform hover:-translate-y-1' : 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'}`}
                     >
                       <span className="text-4xl">🧠</span>
                       <span className="font-bold text-gray-900 text-lg">Ujian Kognitif</span>
-                      <span className="text-xs font-bold px-2 py-1 rounded ${isFinished ? 'text-blue-700 bg-blue-100' : 'text-gray-500'}">
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${isFinished ? 'text-blue-700 bg-blue-100' : 'text-gray-500'}`}>
                         {isFinished ? 'Menunggu hasil kognitif untuk tahap Signing Contract ⏳' : applicantStatus === 'Penilaian Cognitive' ? 'Tersedia: Silakan Kerjakan' : 'Sudah Selesai / Belum Tersedia'}
                       </span>
                     </button>
 
                     {/* TOMBOL ONBOARDING KONTRAK */}
-                    <button 
+                    <button
                       onClick={() => setView('onboarding_contract')}
                       disabled={applicantStatus !== 'Onboarding'}
                       className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-3 transition ${applicantStatus === 'Onboarding' ? 'border-green-600 bg-green-50 hover:bg-green-100 cursor-pointer shadow-md transform hover:-translate-y-1' : 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'}`}
@@ -253,7 +325,6 @@
                       <span className="font-bold text-gray-900 text-lg">Perjanjian Onboarding</span>
                       <span className="text-xs text-gray-500 font-medium">{applicantStatus === 'Onboarding' ? 'Tersedia: Tinjau Kontrak Anda' : 'Belum Tersedia'}</span>
                     </button>
-
                   </div>
                 </div>
               )}
@@ -272,13 +343,13 @@
                     {questions.map((q, idx) => (
                       <div key={q.id} className="bg-white p-6 rounded-xl border shadow-sm">
                         <p className="font-bold text-lg mb-4 text-gray-800"><span className="text-red-600 mr-2">{idx + 1}.</span> {q.question}</p>
-                        <div className="space-y-3 pl-6">
+                        <div className="space-y-3 pl-0 md:pl-6">
                           {['A', 'B', 'C', 'D'].map(opt => {
                             const optText = q[`option${opt}`];
-                            if (!optText) return null; 
+                            if (!optText) return null;
                             return (
-                              <label key={opt} className="flex items-center space-x-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 transition">
-                                <input type="radio" name={`question_${q.id}`} value={optText} onChange={() => handleAnswerChange(q.id, optText)} className="w-4 h-4 text-red-600 cursor-pointer" />
+                              <label key={opt} className={`flex items-center space-x-3 cursor-pointer p-3 rounded-lg border transition ${answers[q.id] === optText ? 'bg-red-50 border-red-300' : 'hover:bg-gray-50 border-transparent hover:border-gray-200'}`}>
+                                <input type="radio" name={`question_${q.id}`} value={optText} checked={answers[q.id] === optText} onChange={() => handleAnswerChange(q.id, optText)} className="w-4 h-4 text-red-600 cursor-pointer" />
                                 <span className="text-gray-700 font-medium">{optText}</span>
                               </label>
                             );
@@ -288,7 +359,7 @@
                     ))}
                   </div>
 
-                  <button onClick={handleSubmitTest} disabled={isLoading} className={`mt-10 w-full py-4 text-white font-bold rounded-xl shadow-lg transition ${isLoading ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}>
+                  <button onClick={handleSubmitTest} disabled={isLoading} className={`mt-10 w-full py-4 text-white font-bold rounded-xl shadow-lg transition ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-black hover:bg-gray-900'}`}>
                     {isLoading ? 'MEMPROSES...' : 'KUMPULKAN JAWABAN'}
                   </button>
                 </div>
@@ -297,10 +368,14 @@
               {/* VIEW 3: LAYAR KONTRAK ONBOARDING */}
               {view === 'onboarding_contract' && (
                 <div className="bg-white p-8 rounded-2xl shadow-sm border max-w-3xl mx-auto animate-[fadeIn_0.5s_ease-out]">
-                  <h2 className="text-2xl font-black mb-6 border-b pb-4 text-gray-900 text-center">SURAT PERJANJIAN KERJA</h2>
-                  
+                  <div className="flex justify-between items-start gap-4 border-b pb-4 mb-6">
+                    <button onClick={() => setView('dashboard')} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition">← Dashboard</button>
+                    <h2 className="text-2xl font-black text-gray-900 text-center flex-1">SURAT PERJANJIAN KERJA</h2>
+                    <div className="w-20"></div>
+                  </div>
+
                   <div className="space-y-6 max-h-96 overflow-y-auto mb-8 p-6 bg-gray-50 rounded-xl border border-gray-200 text-sm leading-relaxed text-gray-700">
-                    {clauses.length === 0 ? <p className="text-center italic">Memuat pasal perjanjian...</p> : 
+                    {clauses.length === 0 ? <p className="text-center italic">Memuat pasal perjanjian...</p> :
                       clauses.map((c, i) => (
                       <div key={i} className="mb-4">
                         <h4 className="font-bold text-black text-base mb-1">Pasal {i+1}: {c.title}</h4>
@@ -314,22 +389,22 @@
                       <input type="checkbox" checked={isAgreementChecked} onChange={(e) => setIsAgreementChecked(e.target.checked)} className="mt-1 w-5 h-5 text-blue-600 rounded cursor-pointer" />
                       <span className="text-sm font-semibold text-blue-900 group-hover:text-black">Dengan mencentang kotak ini, saya menyatakan telah membaca, memahami, dan menyetujui seluruh pasal yang tercantum di atas tanpa paksaan dari pihak mana pun.</span>
                     </label>
-                    
+
                     <div className="mb-4">
                       <label className="block text-xs font-bold uppercase text-gray-600 mb-2">Tanda Tangan Digital (Ketik Nama Lengkap Anda)</label>
-                      <input 
-                        type="text" 
-                        placeholder="Contoh: Budi Santoso" 
-                        value={signName} 
-                        onChange={(e) => setSignName(e.target.value)} 
-                        className="w-full p-4 border-2 border-gray-300 rounded-xl outline-none focus:border-blue-600 font-bold text-gray-900" 
+                      <input
+                        type="text"
+                        placeholder="Contoh: Budi Santoso"
+                        value={signName}
+                        onChange={(e) => setSignName(e.target.value)}
+                        className="w-full p-4 border-2 border-gray-300 rounded-xl outline-none focus:border-blue-600 font-bold text-gray-900"
                       />
                     </div>
 
-                    <button 
-                      onClick={handleSignContract} 
+                    <button
+                      onClick={handleSignContract}
                       disabled={isLoading}
-                      className={`w-full py-4 text-white font-black rounded-xl shadow-md transition transform ${isLoading ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700 hover:-translate-y-1'}`}
+                      className={`w-full py-4 text-white font-black rounded-xl shadow-md transition transform ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:-translate-y-1'}`}
                     >
                       {isLoading ? 'MEMPROSES...' : 'KIRIM PERSETUJUAN KONTRAK'}
                     </button>
@@ -347,17 +422,14 @@
                   <p className="text-gray-600 max-w-lg mx-auto leading-relaxed mb-8">
                     Proses penandatanganan kontrak digital telah selesai. Dokumen legal Anda sudah tersimpan aman di sistem kami. Selamat bergabung dan sampai jumpa di hari pertama kerja!
                   </p>
-                  <button onClick={() => {
-                      localStorage.removeItem('id_pelamar_aktif'); // Hapus sesi pelamar
-                      window.location.href = INDEX_PAGE_URL; // Balik ke form awal/login
-                    }} className="w-full sm:w-auto px-8 py-4 bg-black hover:bg-gray-900 text-white font-bold rounded-xl shadow-md transition transform hover:-translate-y-1">
+                  <button onClick={handleLogout} className="w-full sm:w-auto px-8 py-4 bg-black hover:bg-gray-900 text-white font-bold rounded-xl shadow-md transition transform hover:-translate-y-1">
                     Kembali ke Halaman Awal
                   </button>
                 </div>
               )}
             </React.Fragment>
           )}
-          
+
           {/* KOMPONEN MODAL POP-UP CUSTOM */}
           {dialog.isOpen && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
@@ -371,7 +443,7 @@
                   {dialog.type === 'confirm' && (
                     <button onClick={() => setDialog({ ...dialog, isOpen: false })} className="px-5 py-2 bg-gray-100 text-gray-800 font-bold rounded-xl hover:bg-gray-200 transition">Batal</button>
                   )}
-                  <button onClick={() => { setDialog({ ...dialog, isOpen: false }); if(dialog.onConfirm) dialog.onConfirm(); }} className="px-5 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition shadow-md">
+                  <button onClick={() => { const onConfirm = dialog.onConfirm; setDialog({ ...dialog, isOpen: false }); if(onConfirm) onConfirm(); }} className="px-5 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition shadow-md">
                     {dialog.type === 'confirm' ? 'Ya, Lanjutkan' : 'Tutup'}
                   </button>
                 </div>
@@ -381,6 +453,7 @@
         </div>
       );
     }
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<PelamarDashboard />);
   </script>
