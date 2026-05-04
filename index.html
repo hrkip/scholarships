@@ -1,54 +1,113 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Karir - Kampung Inggris Pontianak</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-  
+
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #fcfcfc; }
-    .input-field { border: 1px solid #d1d5db; padding: 12px; border-radius: 8px; width: 100%; margin-top: 6px; outline: none; background-color: #ffffff; transition: all 0.3s; }
-    .input-field:focus { border-color: #dc2626; box-shadow: 0 10px 15px -3px rgba(220,38,38,0.1); transform: translateY(-3px); }
-    input[type="file"]::file-selector-button { background-color: #111827; color: white; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; margin-right: 12px; font-weight: 600; transition: all 0.2s ease; }
-    input[type="file"]::file-selector-button:hover { background-color: #dc2626; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #fcfcfc;
+    }
+
+    .input-field {
+      border: 1px solid #d1d5db;
+      padding: 12px;
+      border-radius: 8px;
+      width: 100%;
+      margin-top: 6px;
+      outline: none;
+      background-color: #ffffff;
+      transition: all 0.3s;
+    }
+
+    .input-field:focus {
+      border-color: #dc2626;
+      box-shadow: 0 10px 15px -3px rgba(220, 38, 38, 0.1);
+      transform: translateY(-3px);
+    }
+
+    input[type="file"]::file-selector-button {
+      background-color: #111827;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      margin-right: 12px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      background-color: #dc2626;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body class="text-gray-900 antialiased selection:bg-red-200 selection:text-red-900">
   <div id="root"></div>
-  
+
   <script type="text/babel">
     const { useState, useEffect } = React;
 
+    /**
+     * GITHUB MIGRATION CONFIG
+     * 1. Deploy Code_GitHub_API.gs as a Google Apps Script Web App.
+     * 2. Copy the Web App URL below.
+     * 3. Put this file in GitHub Pages as index.html.
+     *
+     * Important: API calls use Content-Type text/plain to avoid GAS CORS preflight.
+     */
+    const GAS_WEB_APP_URL = 'PASTE_YOUR_GAS_WEB_APP_URL_HERE';
 
-    // ==========================================
-    // GITHUB PAGES -> GOOGLE APPS SCRIPT API
-    // ==========================================
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx7k6T7iaApTLb4KNGAG8qJ4XcpoXB9km6ls6rrNp-xZQXCSauRHqidjUG29hV6pKV5/exec";
-    const ADMIN_PAGE_URL = "admin.html";
-    const PELAMAR_PAGE_URL = "pelamar.html";
+    const ROUTES = {
+      admin: './admin.html',
+      pelamar: './pelamar.html'
+    };
 
-    async function callApi(action, ...args) {
+    const STORAGE_KEYS = {
+      adminUsername: 'hr_username',
+      adminPassword: 'hr_password',
+      activeApplicantId: 'id_pelamar_aktif'
+    };
+
+    async function callGasApi(action, params = []) {
+      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'PASTE_YOUR_GAS_WEB_APP_URL_HERE') {
+        throw new Error('GAS_WEB_APP_URL belum diisi. Masukkan URL deployment Web App dari Apps Script.');
+      }
+
+      const response = await fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify({ action, params })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server merespons HTTP ${response.status}`);
+      }
+
+      const text = await response.text();
       try {
-        const response = await fetch(GAS_API_URL, {
-          method: "POST",
-          redirect: "follow",
-          body: JSON.stringify({ action, args })
-        });
-        const text = await response.text();
-        try {
-          return JSON.parse(text);
-        } catch (parseError) {
-          return { success: false, message: "Respon server tidak valid: " + text.slice(0, 200) };
-        }
+        return JSON.parse(text);
       } catch (error) {
-        return { success: false, message: "Koneksi API gagal: " + error.message };
+        throw new Error('Respons server bukan JSON valid: ' + text.slice(0, 160));
       }
     }
-
 
     function JobPortal() {
       const [formFields, setFormFields] = useState([]);
@@ -56,178 +115,304 @@
       const [formData, setFormData] = useState({ agreement: false });
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [dialog, setDialog] = useState({ isOpen: false, type: 'success', title: '', message: '' });
-      
-      // State Modal Login
+
       const [showLoginModal, setShowLoginModal] = useState(false);
       const [loginType, setLoginType] = useState('Admin');
       const [loginData, setLoginData] = useState({ username: '', password: '', idPelamar: '', rememberMe: false });
       const [isLoggingIn, setIsLoggingIn] = useState(false);
-      const [loginStatus, setLoginStatus] = useState({ type: '', message: '' }); 
-      const [adminUrl, setAdminUrl] = useState('');
+      const [loginStatus, setLoginStatus] = useState({ type: '', message: '' });
+      const [targetUrl, setTargetUrl] = useState('');
 
-      // LOAD DATA SETTINGS & REMEMBER ME SAAT PERTAMA KALI BUKA
       useEffect(() => {
-        // Ambil pengaturan form dari GAS API
-        callApi('getFormSettings').then((res) => {
-          if (res.success) {
-            setFormFields(res.data);
-          } else {
-            alert('Gagal memuat form: ' + res.message);
-          }
-          setIsLoadingForm(false);
-        });
-
-        // Cek LocalStorage untuk fitur Remember Me
-        const savedUser = localStorage.getItem('hr_username');
-        const savedPass = localStorage.getItem('hr_password');
-        if (savedUser && savedPass) {
-          setLoginData({ username: savedUser, password: savedPass, rememberMe: true });
-        }
+        loadFormSettings();
+        loadRememberedAdminLogin();
       }, []);
+
+      const loadFormSettings = async () => {
+        setIsLoadingForm(true);
+        try {
+          const res = await callGasApi('getFormSettings');
+          if (res.success) {
+            setFormFields(Array.isArray(res.data) ? res.data : []);
+          } else {
+            setDialog({
+              isOpen: true,
+              type: 'error',
+              title: 'Gagal Memuat Form',
+              message: res.message || 'Pengaturan form tidak dapat dimuat.'
+            });
+          }
+        } catch (error) {
+          setDialog({
+            isOpen: true,
+            type: 'error',
+            title: 'Koneksi Backend Gagal',
+            message: error.message
+          });
+        } finally {
+          setIsLoadingForm(false);
+        }
+      };
+
+      const loadRememberedAdminLogin = () => {
+        const savedUser = localStorage.getItem(STORAGE_KEYS.adminUsername);
+        const savedPass = localStorage.getItem(STORAGE_KEYS.adminPassword);
+        if (savedUser && savedPass) {
+          setLoginData(prev => ({
+            ...prev,
+            username: savedUser,
+            password: savedPass,
+            rememberMe: true
+          }));
+        }
+      };
+
+      const saveRememberedAdminLogin = () => {
+        if (loginData.rememberMe) {
+          localStorage.setItem(STORAGE_KEYS.adminUsername, loginData.username);
+          localStorage.setItem(STORAGE_KEYS.adminPassword, loginData.password);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.adminUsername);
+          localStorage.removeItem(STORAGE_KEYS.adminPassword);
+        }
+      };
 
       const handleLoginClick = (type) => {
         setLoginType(type);
         setShowLoginModal(true);
         setLoginStatus({ type: '', message: '' });
-        setAdminUrl(''); 
+        setTargetUrl('');
       };
 
-      const handleLoginSubmit = (e) => {
+      const handleLoginSubmit = async (e) => {
         e.preventDefault();
         setIsLoggingIn(true);
         setLoginStatus({ type: '', message: '' });
-        
-        if (loginType === 'Admin') {
-          callApi('verifyAdminLogin', loginData.username, loginData.password).then((res) => {
+        setTargetUrl('');
+
+        try {
+          if (loginType === 'Admin') {
+            const res = await callGasApi('verifyAdminLogin', [loginData.username, loginData.password]);
+
             if (res.success) {
-              if (loginData.rememberMe) {
-                localStorage.setItem('hr_username', loginData.username);
-                localStorage.setItem('hr_password', loginData.password);
-              } else {
-                localStorage.removeItem('hr_username');
-                localStorage.removeItem('hr_password');
-              }
+              saveRememberedAdminLogin();
+              sessionStorage.setItem('admin_login_verified', 'true');
               setLoginStatus({ type: 'success', message: 'Verifikasi sukses! Silakan masuk.' });
-              setAdminUrl(ADMIN_PAGE_URL);
-              setIsLoggingIn(false);
+              setTargetUrl(ROUTES.admin);
             } else {
-              setLoginStatus({ type: 'error', message: res.message });
-              setIsLoggingIn(false);
+              setLoginStatus({ type: 'error', message: res.message || 'Username atau password salah.' });
             }
-          });
-        } else {
-          // LOGIKA LOGIN PELAMAR
-          callApi('verifyPelamarLogin', loginData.idPelamar).then((res) => {
+          } else {
+            const applicantId = String(loginData.idPelamar || '').trim();
+            const res = await callGasApi('verifyPelamarLogin', [applicantId]);
+
             if (res.success) {
-              // Simpan ID pelamar di browser biar Pelamar.html bisa ngebaca siapa yg login
-              localStorage.setItem('id_pelamar_aktif', loginData.idPelamar);
+              localStorage.setItem(STORAGE_KEYS.activeApplicantId, applicantId);
               setLoginStatus({ type: 'success', message: 'ID Valid! Membuka dashboard tes...' });
-              setAdminUrl(PELAMAR_PAGE_URL); // Arahkan ke page pelamar GitHub
-              setIsLoggingIn(false);
+              setTargetUrl(ROUTES.pelamar);
             } else {
-              setLoginStatus({ type: 'error', message: res.message });
-              setIsLoggingIn(false);
+              setLoginStatus({ type: 'error', message: res.message || 'ID Pelamar tidak valid.' });
             }
-          });
+          }
+        } catch (error) {
+          setLoginStatus({ type: 'error', message: error.message });
+        } finally {
+          setIsLoggingIn(false);
         }
       };
 
-      // ---------------- LOGIKA FORM DINAMIS ----------------
       const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
+        setFormData(prev => ({
+          ...prev,
+          [name]: type === 'checkbox' ? checked : value
+        }));
       };
 
       const handleFileChange = (e, fieldName) => {
         const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (f) => {
-            const data = f.target.result.split(',')[1];
-            setFormData({ 
-              ...formData, 
-              [fieldName]: { name: file.name, mimeType: file.type, data: data } 
-            });
-          };
-          reader.readAsDataURL(file);
+
+        if (!file) {
+          setFormData(prev => {
+            const updated = { ...prev };
+            delete updated[fieldName];
+            return updated;
+          });
+          return;
         }
+
+        const allowedTypes = [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+
+        if (!allowedTypes.includes(file.type)) {
+          e.target.value = '';
+          setDialog({
+            isOpen: true,
+            type: 'error',
+            title: 'Format Berkas Tidak Valid',
+            message: 'Gunakan file PDF, DOC, atau DOCX.'
+          });
+          return;
+        }
+
+        const maxSizeMb = 10;
+        if (file.size > maxSizeMb * 1024 * 1024) {
+          e.target.value = '';
+          setDialog({
+            isOpen: true,
+            type: 'error',
+            title: 'Ukuran Berkas Terlalu Besar',
+            message: `Ukuran maksimal file adalah ${maxSizeMb} MB.`
+          });
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const base64Data = event.target.result.split(',')[1];
+          setFormData(prev => ({
+            ...prev,
+            [fieldName]: {
+              name: file.name,
+              mimeType: file.type,
+              data: base64Data
+            }
+          }));
+        };
+        reader.onerror = () => {
+          setDialog({
+            isOpen: true,
+            type: 'error',
+            title: 'Gagal Membaca File',
+            message: 'File tidak dapat diproses oleh browser. Coba unggah ulang.'
+          });
+        };
+        reader.readAsDataURL(file);
       };
 
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        
-        // Validasi file (karena input HTML biasa gak bisa nangkap objek base64 saat divalidasi required)
-        const activeFiles = formFields.filter(f => f.active && f.type === 'file' && f.required);
-        for(let fileField of activeFiles) {
-          if(!formData[fileField.name]) {
-             setDialog({ isOpen: true, type: 'error', title: 'Berkas Kurang!', message: `Harap unggah dokumen untuk: ${fileField.label}` });
-             return;
+      const validateRequiredFiles = () => {
+        const activeFiles = formFields.filter(field => field.active && field.type === 'file' && field.required);
+
+        for (const fileField of activeFiles) {
+          if (!formData[fileField.name]) {
+            setDialog({
+              isOpen: true,
+              type: 'error',
+              title: 'Berkas Kurang!',
+              message: `Harap unggah dokumen untuk: ${fileField.label}`
+            });
+            return false;
           }
         }
+
+        return true;
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!validateRequiredFiles()) return;
 
         setIsSubmitting(true);
-        
-        callApi('processForm', formData).then((res) => {
-          if(res.success) {
-            setDialog({ 
-              isOpen: true, type: 'success', title: 'Lamaran Terkirim! 🎉', 
-              message: 'Seluruh data dan berkas Anda telah tersimpan dengan aman di sistem kami.' 
+
+        try {
+          const res = await callGasApi('processForm', [formData]);
+
+          if (res.success) {
+            setDialog({
+              isOpen: true,
+              type: 'success',
+              title: 'Lamaran Terkirim! 🎉',
+              message: 'Seluruh data dan berkas Anda telah tersimpan dengan aman di sistem kami.'
             });
-            setFormData({ agreement: false }); // Reset data
-            e.target.reset(); // Kosongkan input UI
+            setFormData({ agreement: false });
+            e.target.reset();
           } else {
-            setDialog({ isOpen: true, type: 'error', title: 'Pengiriman Gagal', message: res.message });
+            setDialog({
+              isOpen: true,
+              type: 'error',
+              title: 'Pengiriman Gagal',
+              message: res.message || 'Data belum berhasil dikirim.'
+            });
           }
+        } catch (error) {
+          setDialog({
+            isOpen: true,
+            type: 'error',
+            title: 'Koneksi Terputus',
+            message: 'Terjadi kesalahan jaringan: ' + error.message
+          });
+        } finally {
           setIsSubmitting(false);
-        }).catch((err) => {
-          setDialog({ isOpen: true, type: 'error', title: 'Koneksi Terputus', message: 'Terjadi kesalahan jaringan: ' + err.message });
-          setIsSubmitting(false);
-        });
+        }
       };
 
-      // Fungsi untuk merender input berdasarkan tipenya
       const renderField = (field) => {
-        if (!field.active) return null; // Jangan render kalau dimatikan admin
+        if (!field.active) return null;
+
+        const fieldName = field.name;
+        const fieldLabel = field.label || fieldName;
+        const required = Boolean(field.required);
 
         switch (field.type) {
           case 'textarea':
             return (
-              <textarea 
-                name={field.name} 
-                onChange={handleChange} 
-                className="input-field resize-none" 
-                rows="3" 
-                placeholder={`Masukkan ${field.label.toLowerCase()}...`} 
-                required={field.required}
+              <textarea
+                name={fieldName}
+                value={formData[fieldName] || ''}
+                onChange={handleChange}
+                className="input-field resize-none"
+                rows="3"
+                placeholder={`Masukkan ${fieldLabel.toLowerCase()}...`}
+                required={required}
               ></textarea>
             );
+
           case 'select':
-            const options = field.options.split(',').map(opt => opt.trim());
+            const options = String(field.options || '')
+              .split(',')
+              .map(option => option.trim())
+              .filter(Boolean);
+
             return (
-              <select name={field.name} onChange={handleChange} className="input-field cursor-pointer" required={field.required} defaultValue="">
-                <option value="" disabled>Pilih {field.label}...</option>
-                {options.map((opt, idx) => <option key={idx} value={opt}>{opt}</option>)}
+              <select
+                name={fieldName}
+                value={formData[fieldName] || ''}
+                onChange={handleChange}
+                className="input-field cursor-pointer"
+                required={required}
+              >
+                <option value="" disabled>Pilih {fieldLabel}...</option>
+                {options.map((option, index) => (
+                  <option key={`${fieldName}-${index}`} value={option}>{option}</option>
+                ))}
               </select>
             );
+
           case 'file':
             return (
-              <input 
-                type="file" 
-                accept=".pdf,.doc,.docx" 
-                onChange={(e) => handleFileChange(e, field.name)} 
-                className="input-field" 
-                required={field.required} 
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={(event) => handleFileChange(event, fieldName)}
+                className="input-field"
+                required={required}
               />
             );
-          default: // text, email, tel, url
+
+          default:
             return (
-              <input 
-                type={field.type} 
-                name={field.name} 
-                onChange={handleChange} 
-                className="input-field" 
-                placeholder={`Masukkan ${field.label.toLowerCase()}`} 
-                required={field.required} 
+              <input
+                type={field.type || 'text'}
+                name={fieldName}
+                value={formData[fieldName] || ''}
+                onChange={handleChange}
+                className="input-field"
+                placeholder={`Masukkan ${fieldLabel.toLowerCase()}`}
+                required={required}
               />
             );
         }
@@ -235,30 +420,43 @@
 
       return (
         <div>
-          {/* Header */}
           <nav className="max-w-4xl mx-auto py-6 px-6 flex justify-between items-center border-b border-gray-200">
             <div className="flex items-center space-x-3 cursor-pointer group">
-              <img 
-                src="https://drive.google.com/thumbnail?id=1Pn3HnYmsXNA4omqf_PPUYZfeDon1WMNz&sz=w1000" 
-                alt="Logo Perusahaan" 
-                className="h-12 w-auto rounded group-hover:opacity-80 transition object-contain" 
+              <img
+                src="https://drive.google.com/thumbnail?id=1Pn3HnYmsXNA4omqf_PPUYZfeDon1WMNz&sz=w1000"
+                alt="Logo Perusahaan"
+                className="h-12 w-auto rounded group-hover:opacity-80 transition object-contain"
               />
               <h1 className="text-xl font-bold tracking-tight hidden sm:block text-gray-900 group-hover:text-red-600 transition">
                 Kampung Inggris Pontianak
               </h1>
             </div>
+
             <div className="space-x-4 flex items-center">
-              <button onClick={() => handleLoginClick('Pelamar')} className="text-sm font-semibold text-gray-600 hover:text-red-600 transition">Login Pelamar</button>
-              <button onClick={() => handleLoginClick('Admin')} className="px-5 py-2.5 bg-black text-white text-sm font-bold rounded-lg hover:bg-red-600 transition shadow-md hover:shadow-lg transform hover:-translate-y-0.5">Login Admin</button>
+              <button
+                type="button"
+                onClick={() => handleLoginClick('Pelamar')}
+                className="text-sm font-semibold text-gray-600 hover:text-red-600 transition"
+              >
+                Login Pelamar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLoginClick('Admin')}
+                className="px-5 py-2.5 bg-black text-white text-sm font-bold rounded-lg hover:bg-red-600 transition shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+              >
+                Login Admin
+              </button>
             </div>
           </nav>
 
-          {/* Form Pelamar Utama */}
           <main className="max-w-2xl mx-auto py-12 px-6">
             <header className="mb-10 text-center">
               <h2 className="text-3xl font-extrabold mb-3 text-black">Formulir Aplikasi</h2>
               <div className="w-16 h-1 bg-red-600 mx-auto mb-4 rounded-full"></div>
-              <p className="text-gray-500 font-medium">Silakan lengkapi data diri Anda untuk melamar posisi yang tersedia.</p>
+              <p className="text-gray-500 font-medium">
+                Silakan lengkapi data diri Anda untuk melamar posisi yang tersedia.
+              </p>
             </header>
 
             {isLoadingForm ? (
@@ -267,10 +465,8 @@
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
-                
-                {/* MAPPING FORM FIELDS DINAMIS DARI SERVER */}
-                {formFields.filter(f => f.active).map((field) => (
-                  <section key={field.id} className="animate-[fadeIn_0.5s_ease-out]">
+                {formFields.filter(field => field.active).map((field) => (
+                  <section key={field.id || field.name} className="animate-[fadeIn_0.5s_ease-out]">
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
                       {field.label} {field.required && <span className="text-red-500">*</span>}
                     </label>
@@ -278,67 +474,118 @@
                   </section>
                 ))}
 
-                {/* Checkbox Agreement Static (Harus selalu ada) */}
                 <section className="bg-gray-50 p-4 rounded-lg border border-gray-100 mt-8">
                   <label className="flex items-start space-x-3 cursor-pointer">
-                    <input type="checkbox" name="agreement" checked={formData.agreement || false} onChange={handleChange} className="mt-1 w-5 h-5 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2 cursor-pointer transition" required />
+                    <input
+                      type="checkbox"
+                      name="agreement"
+                      checked={formData.agreement || false}
+                      onChange={handleChange}
+                      className="mt-1 w-5 h-5 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2 cursor-pointer transition"
+                      required
+                    />
                     <span className="text-sm text-gray-600 leading-relaxed">
                       Dengan ini saya menyatakan bahwa seluruh data dan dokumen yang saya lampirkan adalah <strong>benar dan dapat dipertanggungjawabkan</strong>. Saya bersedia mengikuti seluruh tahapan proses seleksi sesuai aturan perusahaan.
                     </span>
                   </label>
                 </section>
 
-                <button type="submit" disabled={isSubmitting} className={`w-full py-4 text-white font-bold rounded-xl transition-all duration-300 shadow-md ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 hover:shadow-lg transform hover:-translate-y-1'}`}>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`w-full py-4 text-white font-bold rounded-xl transition-all duration-300 shadow-md ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 hover:shadow-lg transform hover:-translate-y-1'}`}
+                >
                   {isSubmitting ? 'MENGIRIM DATA...' : 'KIRIM LAMARAN'}
                 </button>
               </form>
             )}
           </main>
-          
-          {/* MODAL LOGIN (DINAMIS UNTUK ADMIN & PELAMAR) */}
+
           {showLoginModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm relative">
-                <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-600 font-bold text-2xl transition">×</button>
-                
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(false)}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-red-600 font-bold text-2xl transition"
+                >
+                  ×
+                </button>
+
                 <div className="flex flex-col items-center mb-6">
-                  {/* Icon dinamis menyesuaikan tipe login */}
                   <div className={`w-12 h-12 text-white rounded-full flex items-center justify-center font-bold text-xl mb-3 ${loginType === 'Admin' ? 'bg-black' : 'bg-red-600'}`}>
                     {loginType === 'Admin' ? 'A' : 'P'}
                   </div>
                   <h3 className="text-2xl font-extrabold text-gray-900">Login {loginType}</h3>
                 </div>
-                
-                {/* INI DIA TEMPAT FORM YANG LU TANYAKAN BRO 👇 */}
+
                 <form onSubmit={handleLoginSubmit} className="space-y-5">
                   {loginType === 'Admin' ? (
                     <React.Fragment>
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">Username</label>
-                        <input type="text" value={loginData.username} onChange={(e) => setLoginData({...loginData, username: e.target.value})} className="input-field" placeholder="Masukkan username" required disabled={adminUrl !== ''} />
+                        <input
+                          type="text"
+                          value={loginData.username}
+                          onChange={(event) => setLoginData(prev => ({ ...prev, username: event.target.value }))}
+                          className="input-field"
+                          placeholder="Masukkan username"
+                          required
+                          disabled={targetUrl !== ''}
+                        />
                       </div>
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">Password</label>
-                        <input type="password" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} className="input-field" placeholder="••••••••" required disabled={adminUrl !== ''} />
+                        <input
+                          type="password"
+                          value={loginData.password}
+                          onChange={(event) => setLoginData(prev => ({ ...prev, password: event.target.value }))}
+                          className="input-field"
+                          placeholder="••••••••"
+                          required
+                          disabled={targetUrl !== ''}
+                        />
                       </div>
                       <div className="flex items-center">
-                        <input type="checkbox" id="rememberMe" checked={loginData.rememberMe} onChange={(e) => setLoginData({...loginData, rememberMe: e.target.checked})} className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500 cursor-pointer" disabled={adminUrl !== ''} />
+                        <input
+                          type="checkbox"
+                          id="rememberMe"
+                          checked={loginData.rememberMe}
+                          onChange={(event) => setLoginData(prev => ({ ...prev, rememberMe: event.target.checked }))}
+                          className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500 cursor-pointer"
+                          disabled={targetUrl !== ''}
+                        />
                         <label htmlFor="rememberMe" className="ml-2 text-sm font-medium text-gray-600 cursor-pointer">Remember Me</label>
                       </div>
                     </React.Fragment>
                   ) : (
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">ID Pelamar</label>
-                      <input type="text" value={loginData.idPelamar} onChange={(e) => setLoginData({...loginData, idPelamar: e.target.value})} className="input-field" placeholder="Contoh: PLM-171234567" required disabled={adminUrl !== ''} />
+                      <input
+                        type="text"
+                        value={loginData.idPelamar}
+                        onChange={(event) => setLoginData(prev => ({ ...prev, idPelamar: event.target.value }))}
+                        className="input-field"
+                        placeholder="Contoh: PLM-171234567"
+                        required
+                        disabled={targetUrl !== ''}
+                      />
                     </div>
                   )}
 
-                  {!adminUrl ? (
-                    <button type="submit" disabled={isLoggingIn} className={`w-full py-3 text-white font-bold rounded-xl transition shadow-md ${isLoggingIn ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}>
+                  {!targetUrl ? (
+                    <button
+                      type="submit"
+                      disabled={isLoggingIn}
+                      className={`w-full py-3 text-white font-bold rounded-xl transition shadow-md ${isLoggingIn ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                    >
                       {isLoggingIn ? 'Memverifikasi...' : 'Verifikasi Akun'}
                     </button>
                   ) : (
-                    <a href={adminUrl} target="_top" className="block text-center w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition shadow-lg animate-pulse">
+                    <a
+                      href={targetUrl}
+                      className="block text-center w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition shadow-lg animate-pulse"
+                    >
                       ✅ Mulai / Masuk
                     </a>
                   )}
@@ -349,13 +596,10 @@
                     </div>
                   )}
                 </form>
-                {/* 👆 BATAS AKHIR FORM LOGIN */}
-
               </div>
             </div>
           )}
 
-          {/* KOMPONEN POP-UP NOTIFIKASI CUSTOM */}
           {dialog.isOpen && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[70] p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-[fadeIn_0.2s_ease-out] transform transition-all">
@@ -364,8 +608,9 @@
                 </div>
                 <h3 className="text-2xl font-black mb-2 text-gray-900">{dialog.title}</h3>
                 <p className="text-gray-600 mb-8 text-sm leading-relaxed">{dialog.message}</p>
-                <button 
-                  onClick={() => setDialog({ ...dialog, isOpen: false })} 
+                <button
+                  type="button"
+                  onClick={() => setDialog({ ...dialog, isOpen: false })}
                   className="w-full py-3.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all shadow-md transform hover:-translate-y-1"
                 >
                   Tutup & Lanjutkan
@@ -373,11 +618,10 @@
               </div>
             </div>
           )}
-          {/* 👆 BATAS POP-UP CUSTOM 👆 */}
-
         </div>
       );
     }
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<JobPortal />);
   </script>
