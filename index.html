@@ -311,70 +311,89 @@
         return true;
       };
 
-      const normalizeIndonesianWa = (value) => {
-        if (!value) return '';
-      
-        let number = String(value).trim();
-      
-        // Remove spaces, dashes, brackets, plus signs, and other non-digits
-        number = number.replace(/\D/g, '');
-      
-        // 08xxxxxxxxxx -> 628xxxxxxxxxx
-        if (number.startsWith('0')) {
-          number = '62' + number.slice(1);
-        }
-      
-        // 8xxxxxxxxxx -> 628xxxxxxxxxx
-        if (number.startsWith('8')) {
-          number = '62' + number;
-        }
-      
-        // 6208xxxxxxxxxx -> 628xxxxxxxxxx
-        if (number.startsWith('6208')) {
-          number = '62' + number.slice(3);
-        }
-      
-        return number;
-      };
-
-      const handleSubmit = async (e) => {
-        e.preventDefault();
-
-        if (!validateRequiredFiles()) return;
-
-        setIsSubmitting(true);
-
-        try {
-          const res = await callGasApi('processForm', [formData]);
-
-          if (res.success) {
-            setDialog({
-              isOpen: true,
-              type: 'success',
-              title: 'Lamaran Terkirim! 🎉',
-              message: 'Seluruh data dan berkas Anda telah tersimpan dengan aman di sistem kami.'
+        const normalizeIndonesianWa = (value) => {
+          if (!value) return '';
+        
+          let number = String(value).trim();
+        
+          // Remove all non-digits: spaces, +, -, (), dots, etc.
+          number = number.replace(/\D/g, '');
+        
+          // Handle international prefix: 00628xxxx -> 628xxxx
+          if (number.startsWith('0062')) {
+            number = '62' + number.slice(4);
+          }
+        
+          // Handle broken format: 6208xxxx -> 628xxxx
+          if (number.startsWith('6208')) {
+            number = '62' + number.slice(3);
+          }
+        
+          // Handle local format: 08xxxx -> 628xxxx
+          if (number.startsWith('0')) {
+            number = '62' + number.slice(1);
+          }
+        
+          // Handle missing country code: 8xxxx -> 628xxxx
+          if (number.startsWith('8')) {
+            number = '62' + number;
+          }
+        
+          return number;
+        };
+        
+        const normalizeTelFields = (data) => {
+          const normalizedData = { ...data };
+        
+          formFields
+            .filter((field) => field.active && field.type === 'tel')
+            .forEach((field) => {
+              normalizedData[field.name] = normalizeIndonesianWa(data[field.name]);
             });
-            setFormData({ agreement: false });
-            e.target.reset();
-          } else {
+        
+          return normalizedData;
+        };
+        
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+        
+          if (!validateRequiredFiles()) return;
+        
+          setIsSubmitting(true);
+        
+          try {
+            const normalizedFormData = normalizeTelFields(formData);
+        
+            const res = await callGasApi('processForm', [normalizedFormData]);
+        
+            if (res.success) {
+              setDialog({
+                isOpen: true,
+                type: 'success',
+                title: 'Lamaran Terkirim! 🎉',
+                message: 'Seluruh data dan berkas Anda telah tersimpan dengan aman di sistem kami.'
+              });
+              setFormData({ agreement: false });
+              e.target.reset();
+            } else {
+              setDialog({
+                isOpen: true,
+                type: 'error',
+                title: 'Pengiriman Gagal',
+                message: res.message || 'Data belum berhasil dikirim.'
+              });
+            }
+          } catch (error) {
             setDialog({
               isOpen: true,
               type: 'error',
-              title: 'Pengiriman Gagal',
-              message: res.message || 'Data belum berhasil dikirim.'
+              title: 'Koneksi Terputus',
+              message: 'Terjadi kesalahan jaringan: ' + error.message
             });
+          } finally {
+            setIsSubmitting(false);
           }
-        } catch (error) {
-          setDialog({
-            isOpen: true,
-            type: 'error',
-            title: 'Koneksi Terputus',
-            message: 'Terjadi kesalahan jaringan: ' + error.message
-          });
-        } finally {
-          setIsSubmitting(false);
-        }
-      };
+        };
 
       const renderField = (field) => {
         if (!field.active) return null;
