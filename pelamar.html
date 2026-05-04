@@ -20,11 +20,11 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    const GAS_WEB_APP_URL = 'PASTE_YOUR_GAS_WEB_APP_URL_HERE';
+    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby_-gE8430wOvKXPjTtridaEQPo14xealdvQcAN1D7ZkhqJLGzrvxIUKmkFx5467sMg/exec';
     const HOME_PAGE = './index.html';
 
     async function callGasApi(action, params = []) {
-      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'https://script.google.com/macros/s/AKfycby_-gE8430wOvKXPjTtridaEQPo14xealdvQcAN1D7ZkhqJLGzrvxIUKmkFx5467sMg/exec') {
+      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'PASTE_YOUR_GAS_WEB_APP_URL_HERE') {
         throw new Error('GAS_WEB_APP_URL belum diisi. Paste URL deployment Apps Script Web App terlebih dahulu.');
       }
 
