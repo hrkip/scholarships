@@ -25,32 +25,41 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
+    // =====================================================
+    // GITHUB FRONTEND CONFIG
+    // =====================================================
+    // 1) Deploy Code_GitHub_API.gs sebagai Apps Script Web App.
+    // 2) Ganti nilai di bawah dengan URL Web App deployment kamu.
+    // 3) Untuk GitHub Pages, biarkan FRONTEND_BASE_URL kosong agar auto relatif.
+    const GAS_WEB_APP_URL = 'PASTE_YOUR_GAS_WEB_APP_URL_HERE';
+    const FRONTEND_BASE_URL = '';
+    const INDEX_PAGE_URL = `${FRONTEND_BASE_URL || '.'}/index.html`;
+    const PELAMAR_PAGE_URL = `${FRONTEND_BASE_URL || '.'}/pelamar.html`;
 
-    // ==========================================
-    // GITHUB PAGES -> GOOGLE APPS SCRIPT API
-    // ==========================================
-    const GAS_API_URL = "PASTE_YOUR_GAS_WEB_APP_EXEC_URL_HERE";
-    const INDEX_PAGE_URL = "index.html";
-    const PUBLIC_PORTAL_URL = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '/') + 'index.html';
-
-    async function callApi(action, ...args) {
-      try {
-        const response = await fetch(GAS_API_URL, {
-          method: "POST",
-          redirect: "follow",
-          body: JSON.stringify({ action, args })
-        });
-        const text = await response.text();
-        try {
-          return JSON.parse(text);
-        } catch (parseError) {
-          return { success: false, message: "Respon server tidak valid: " + text.slice(0, 200) };
-        }
-      } catch (error) {
-        return { success: false, message: "Koneksi API gagal: " + error.message };
+    async function callGasApi(action, params = []) {
+      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'PASTE_YOUR_GAS_WEB_APP_URL_HERE') {
+        throw new Error('GAS_WEB_APP_URL belum disetel. Paste URL Web App Apps Script kamu di Admin.html.');
       }
-    }
 
+      const response = await fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action, params })
+      });
+
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (error) {
+        throw new Error('Response backend bukan JSON valid: ' + text.slice(0, 200));
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || `HTTP ${response.status}`);
+      }
+      return result;
+    }
 
     function AdminDashboard() {
       // --- STATE UTAMA ---
@@ -115,57 +124,82 @@
         fetchInterviewResults(); // 👇 INI DIA BIANG KEROKNYA WOK! NAMA-NAMA UDAH DI-INTERVIEW LANGSUNG KEBACA!
       }, []);
 
-      const fetchData = () => {
+      const fetchData = async () => {
         setIsLoadingData(true);
-        callApi('getApplicantsData').then((res) => {
-          if (res.success) setApplicants(res.data);
-          else alert('Peringatan: ' + res.message);
+        try {
+          const res = await callGasApi('getApplicantsData');
+          if (res.success) setApplicants(res.data || []);
+          else setDialog({ isOpen: true, type: 'alert', title: 'Peringatan', message: res.message || 'Gagal mengambil data pelamar.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Gagal mengambil data pelamar: ' + err.message });
+        } finally {
           setIsLoadingData(false);
-        }).catch((err) => {
-          alert('Gagal mengambil data pelamar: ' + err.message);
-          setIsLoadingData(false);
-        });
+        }
       };
 
-      const fetchFormSettings = () => {
+      const fetchFormSettings = async () => {
         setIsLoadingSettings(true);
-        callApi('getFormSettings').then((res) => {
-          if (res.success) setFormFields(res.data);
+        try {
+          const res = await callGasApi('getFormSettings');
+          if (res.success) setFormFields(res.data || []);
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Gagal memuat pengaturan form.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Gagal memuat pengaturan form: ' + err.message });
+        } finally {
           setIsLoadingSettings(false);
-        });
+        }
       };
 
-      const fetchKognitifQuestions = () => {
+      const fetchKognitifQuestions = async () => {
         setIsLoadingKognitif(true);
-        callApi('getKognitifQuestions').then((res) => {
-          if (res.success) setKognitifQuestions(res.data);
+        try {
+          const res = await callGasApi('getKognitifQuestions');
+          if (res.success) setKognitifQuestions(res.data || []);
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Gagal memuat soal kognitif.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Gagal memuat soal kognitif: ' + err.message });
+        } finally {
           setIsLoadingKognitif(false);
-        });
+        }
       };
 
-      const fetchPassingGrade = () => {
-        callApi('getPassingGrade').then(res => {
-          if (res.success) setPassingGrade(res.data);
-        });
+      const fetchPassingGrade = async () => {
+        try {
+          const res = await callGasApi('getPassingGrade');
+          if (res.success) setPassingGrade(res.data || { rekomen: 60, sangatRekomen: 85 });
+        } catch (err) {
+          console.error('Gagal memuat passing grade:', err);
+        }
       };
 
-      const fetchHasilJawaban = () => {
+      const fetchHasilJawaban = async () => {
         setIsLoadingHasil(true);
-        callApi('getHasilJawaban').then(res => {
+        try {
+          const res = await callGasApi('getHasilJawaban');
           if (res.success) {
-            setHasilJawaban(res.data);
-            setHasilHeaders(res.headers);
+            setHasilJawaban(res.data || []);
+            setHasilHeaders(res.headers || []);
+          } else {
+            setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Gagal memuat hasil jawaban.' });
           }
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Gagal memuat hasil jawaban: ' + err.message });
+        } finally {
           setIsLoadingHasil(false);
-        });
+        }
       };
 
-      const handleSavePassingGrade = () => {
+      const handleSavePassingGrade = async () => {
         setIsSavingGrade(true);
-        callApi('savePassingGrade', passingGrade).then(res => {
+        try {
+          const res = await callGasApi('savePassingGrade', [passingGrade]);
           if(res.success) setDialog({ isOpen: true, type: 'success', title: 'Berhasil', message: 'Passing Grade berhasil diperbarui!' });
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Passing Grade gagal disimpan.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Passing Grade gagal disimpan: ' + err.message });
+        } finally {
           setIsSavingGrade(false);
-        });
+        }
       };
 
       const executeStatusUpdate = (id, newStatus) => {
@@ -176,12 +210,16 @@
         setApplicants(updatedApp);
         setUpdatingIds(prev => ({ ...prev, [id]: true }));
 
-        callApi('updateApplicantStatus', id, newStatus).then((res) => {
-          setUpdatingIds(prev => ({ ...prev, [id]: false })); 
-          if (!res.success) { setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message }); fetchData(); }
-        }).catch((err) => {
-          setUpdatingIds(prev => ({ ...prev, [id]: false }));
-        });
+        callGasApi('updateApplicantStatus', [id, newStatus])
+          .then((res) => {
+            setUpdatingIds(prev => ({ ...prev, [id]: false })); 
+            if (!res.success) { setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Status gagal diperbarui.' }); fetchData(); }
+          })
+          .catch((err) => {
+            setUpdatingIds(prev => ({ ...prev, [id]: false }));
+            setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Status gagal diperbarui: ' + err.message });
+            fetchData();
+          });
       };
 
       const handleStatusChange = (app, newStatus) => {
@@ -243,12 +281,17 @@
       const handleDeleteField = (id) => {
         setDialog({ isOpen: true, type: 'confirm', title: 'Hapus Input?', message: 'Yakin ingin menghapus input pendaftaran ini?', onConfirm: () => setFormFields(formFields.filter(f => f.id !== id)) });
       };
-      const handleSaveFormSettings = () => {
+      const handleSaveFormSettings = async () => {
         setIsSaving(true);
-        callApi('saveFormSettings', formFields).then((res) => {
+        try {
+          const res = await callGasApi('saveFormSettings', [formFields]);
           if(res.success) setDialog({ isOpen: true, type: 'success', title: 'Berhasil', message: 'Pengaturan Form berhasil disimpan!' });
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Pengaturan form gagal disimpan.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Pengaturan form gagal disimpan: ' + err.message });
+        } finally {
           setIsSaving(false);
-        });
+        }
       };
 
       const handleAddQuestion = () => {
@@ -261,21 +304,30 @@
       const handleDeleteQuestion = (id) => {
         setDialog({ isOpen: true, type: 'confirm', title: 'Hapus Soal?', message: 'Hapus soal ini dari penilaian kognitif?', onConfirm: () => setKognitifQuestions(kognitifQuestions.filter(q => q.id !== id)) });
       };
-      const handleSaveKognitif = () => {
+      const handleSaveKognitif = async () => {
         setIsSavingKognitif(true);
-        callApi('saveKognitifQuestions', kognitifQuestions).then((res) => {
+        try {
+          const res = await callGasApi('saveKognitifQuestions', [kognitifQuestions]);
           if(res.success) setDialog({ isOpen: true, type: 'success', title: 'Berhasil', message: 'Soal kognitif disimpan ke database!' });
-          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message });
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Soal kognitif gagal disimpan.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Soal kognitif gagal disimpan: ' + err.message });
+        } finally {
           setIsSavingKognitif(false);
-        });
+        }
       };
 
-      const fetchInterviewQuestions = () => {
+      const fetchInterviewQuestions = async () => {
         setIsLoadingInterview(true);
-        callApi('getInterviewQuestions').then(res => {
-          if (res.success) setInterviewQuestions(res.data);
+        try {
+          const res = await callGasApi('getInterviewQuestions');
+          if (res.success) setInterviewQuestions(res.data || []);
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Gagal memuat pertanyaan wawancara.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Gagal memuat pertanyaan wawancara: ' + err.message });
+        } finally {
           setIsLoadingInterview(false);
-        });
+        }
       };
       const handleAddInterviewQ = () => {
         const newId = interviewQuestions.length > 0 ? Math.max(...interviewQuestions.map(q => q.id)) + 1 : 1;
@@ -287,12 +339,17 @@
       const handleDeleteInterviewQ = (id) => {
         setDialog({ isOpen: true, type: 'confirm', title: 'Hapus Pertanyaan?', message: 'Hapus pertanyaan wawancara ini?', onConfirm: () => setInterviewQuestions(interviewQuestions.filter(q => q.id !== id)) });
       };
-      const handleSaveInterviewQs = () => {
+      const handleSaveInterviewQs = async () => {
         setIsSavingInterview(true);
-        callApi('saveInterviewQuestions', interviewQuestions).then(res => {
+        try {
+          const res = await callGasApi('saveInterviewQuestions', [interviewQuestions]);
           if(res.success) setDialog({ isOpen: true, type: 'success', title: 'Berhasil', message: 'Daftar Pertanyaan Wawancara disimpan!' });
+          else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Pertanyaan wawancara gagal disimpan.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Pertanyaan wawancara gagal disimpan: ' + err.message });
+        } finally {
           setIsSavingInterview(false);
-        });
+        }
       };
 
       const handleOpenGrading = (app) => {
@@ -301,38 +358,53 @@
         setGradingModal({ isOpen: true, app: app, answers: initAns });
       };
 
-      const fetchInterviewResults = () => {
-        callApi('getInterviewResults').then(res => {
-          if (res.success) setInterviewResults(res.data);
-        });
+      const fetchInterviewResults = async () => {
+        try {
+          const res = await callGasApi('getInterviewResults');
+          if (res.success) setInterviewResults(res.data || []);
+        } catch (err) {
+          console.error('Gagal memuat hasil interview:', err);
+        }
       };
-      const fetchOnboardingData = () => {
-        callApi('getOnboardingClauses').then(res => { if(res.success) setClauses(res.data); });
-        callApi('getOnboardingSignatures').then(res => { if(res.success) setSignedList(res.data); });
+      const fetchOnboardingData = async () => {
+        try {
+          const [clauseRes, signatureRes] = await Promise.all([
+            callGasApi('getOnboardingClauses'),
+            callGasApi('getOnboardingSignatures')
+          ]);
+          if(clauseRes.success) setClauses(clauseRes.data || []);
+          if(signatureRes.success) setSignedList(signatureRes.data || []);
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Gagal memuat data onboarding: ' + err.message });
+        }
       };
 
       const handleScoreChange = (qId, score) => {
         setGradingModal(prev => ({...prev, answers: {...prev.answers, [qId]: score}}));
       };
 
-      const handleSubmitGrading = () => {
+      const handleSubmitGrading = async () => {
         setIsSubmittingGrade(true);
         let total = 0;
         Object.values(gradingModal.answers).forEach(val => total += val);
         
-        callApi('submitInterviewResult',
-          gradingModal.app['ID Pelamar'] || gradingModal.app.id, 
-          gradingModal.app['Nama'] || gradingModal.app.name, 
-          gradingModal.app['Posisi'] || gradingModal.app.posisi, 
-          total, gradingModal.answers
-        ).then(res => {
-          setIsSubmittingGrade(false);
+        try {
+          const res = await callGasApi('submitInterviewResult', [
+            gradingModal.app['ID Pelamar'] || gradingModal.app.id, 
+            gradingModal.app['Nama'] || gradingModal.app.name, 
+            gradingModal.app['Posisi'] || gradingModal.app.posisi, 
+            total, gradingModal.answers
+          ]);
           if(res.success) {
             setDialog({ isOpen: true, type: 'success', title: 'Nilai Tersimpan!', message: `Total Skor Kandidat: ${total}` });
             setGradingModal({ isOpen: false, app: null, answers: {} });
             fetchInterviewResults(); 
-          } else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message });
-        });
+          } else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Nilai wawancara gagal disimpan.' });
+        } catch (err) {
+          setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Nilai wawancara gagal disimpan: ' + err.message });
+        } finally {
+          setIsSubmittingGrade(false);
+        }
       };
 
       const getSafeData = (app) => ({
@@ -362,7 +434,7 @@
       const handleLogout = () => {
         setDialog({ 
           isOpen: true, type: 'confirm', title: 'Keluar Sistem', message: 'Yakin ingin keluar dari Dashboard HR?', 
-          onConfirm: () => { window.top.location.href = INDEX_PAGE_URL; } 
+          onConfirm: () => { window.location.href = INDEX_PAGE_URL; }
         });
       };
 
@@ -371,7 +443,7 @@
         let formattedNo = noWa.toString().replace(/\D/g, '');
         if (formattedNo.startsWith('0')) formattedNo = '62' + formattedNo.substring(1);
         
-        const webUrl = PUBLIC_PORTAL_URL; 
+        const webUrl = new URL('index.html', window.location.href).href; 
         let message = `Halo ${namaPelamar}, kami dari Tim HRD menindaklanjuti lamaran Anda.`;
 
         if (status === 'Penilaian Cognitive') {
@@ -861,12 +933,17 @@
                     }} className="absolute top-4 right-4 text-red-600 opacity-0 group-hover:opacity-100 transition p-2">🗑️</button>
                   </div>
                 ))}
-                <button onClick={() => {
+                <button onClick={async () => {
                   setIsSavingClause(true);
-                  callApi('saveOnboardingClauses', clauses).then(() => { 
-                    setIsSavingClause(false); 
-                    setDialog({ isOpen: true, type: 'success', title: 'Berhasil', message: 'Template Perjanjian Tersimpan!' });
-                  });
+                  try {
+                    const res = await callGasApi('saveOnboardingClauses', [clauses]);
+                    if(res.success) setDialog({ isOpen: true, type: 'success', title: 'Berhasil', message: 'Template Perjanjian Tersimpan!' });
+                    else setDialog({ isOpen: true, type: 'alert', title: 'Gagal', message: res.message || 'Template perjanjian gagal disimpan.' });
+                  } catch (err) {
+                    setDialog({ isOpen: true, type: 'alert', title: 'Koneksi Gagal', message: 'Template perjanjian gagal disimpan: ' + err.message });
+                  } finally {
+                    setIsSavingClause(false);
+                  }
                 }} className={`w-full py-4 text-white font-bold rounded-xl transition shadow-md ${isSavingClause ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}>
                   {isSavingClause ? 'Menyimpan...' : '💾 Simpan Template Perjanjian'}
                 </button>
